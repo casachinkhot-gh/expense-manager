@@ -552,16 +552,18 @@ function saveTxn() {
   if (!amount || amount <= 0) { alert('Enter a valid amount.'); return false; }
   if (!date)      { alert('Select a date.');     return false; }
   if (!accountId) { alert('Select an account.'); return false; }
-  if (type === 'transfer' && !toAccId)            { alert('Select a destination account.'); return false; }
-  if (type === 'transfer' && toAccId === accountId) { alert('From and To accounts must differ.'); return false; }
+  if (type === 'transfer' && !toAccId)              { alert('Select a destination account.'); return false; }
+  if (type === 'transfer' && toAccId === accountId) { alert('From and To must differ.');       return false; }
 
-  data.transactions.push({
+  const txn = {
     id: uuid(), date, amount, type, accountId,
     toAccountId:   type === 'transfer' ? toAccId  : null,
     expenseTypeId: type === 'expense'  ? (catId || null) : null,
     note
-  });
+  };
+  data.transactions.push(txn);
   saveData();
+  pushNotification(txn);
   return true;
 }
 
@@ -815,11 +817,24 @@ function renderSettings() {
     : '<p class="empty-msg">No categories.</p>';
   etHTML += `<button class="add-row-btn" onclick="openAddExpenseType()">+ Add Category</button>`;
 
+  const notifPerm = ('Notification' in window) ? Notification.permission : 'unsupported';
+  const notifStatus = notifPerm === 'granted'  ? '<span class="green">● Enabled</span>'
+                    : notifPerm === 'denied'   ? '<span class="red">● Blocked — enable in browser settings</span>'
+                    : notifPerm === 'default'  ? '<span class="orange">● Not enabled</span>'
+                    : '<span class="red">● Not supported on this browser</span>';
+  const notifBtn = notifPerm === 'default'
+    ? `<button class="add-row-btn" onclick="requestNotificationPermission()">Enable Notifications</button>`
+    : '';
+
   return `
     <div class="page-header"><h1>Settings</h1></div>
     <div class="page-content">
       ${section('Accounts & Payment Methods', accHTML)}
       ${section('Expense Categories', etHTML)}
+      ${section('Notifications', `
+        ${row('Status', notifStatus)}
+        ${notifBtn}
+      `)}
       ${section('My Account', `
         ${row('Signed in as', esc(user?.email || ''))}
         ${row('Sync', '<span class="green">● Live</span>')}
@@ -934,6 +949,51 @@ function saveExpenseType() {
   data.expenseTypes.push({ id: uuid(), name, emoji });
   saveData();
   return true;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════
+
+function showToast(msg) {
+  let t = document.getElementById('toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add('toast-show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('toast-show'), 3000);
+}
+
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) { alert('Notifications are not supported by this browser.'); return; }
+  const perm = await Notification.requestPermission();
+  render();
+  if (perm === 'granted') showToast('Notifications enabled!');
+}
+
+function pushNotification(txn) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const title = txn.type === 'expense' ? '💸 Expense Added'
+              : txn.type === 'income'  ? '💰 Income Added'
+              : '🔄 Transfer Added';
+  const acc  = accountName(txn.accountId);
+  const cat  = txn.expenseTypeId ? expenseTypeName(txn.expenseTypeId) : '';
+  let body   = `${fmtCurrency(txn.amount)} — ${acc}`;
+  if (cat)      body += ` · ${cat}`;
+  if (txn.note) body += `\n${txn.note}`;
+
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready.then(reg =>
+      reg.showNotification(title, { body, icon: './icon-192.png', tag: 'expense-txn' })
+    );
+  } else {
+    new Notification(title, { body });
+  }
+  showToast(`${title}  ${fmtCurrency(txn.amount)}`);
 }
 
 // ═══════════════════════════════════════════════════════════════
