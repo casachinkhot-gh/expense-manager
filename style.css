@@ -238,6 +238,35 @@ body {
   margin-bottom: 8px;
 }
 
+/* ── View Switcher ───────────────────────────────────────────── */
+.view-switcher {
+  display: flex;
+  gap: 0;
+  padding: 0 16px 8px;
+  background: var(--bg);
+}
+.view-btn {
+  flex: 1;
+  padding: 7px 4px;
+  border: 1.5px solid var(--border);
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text2);
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.view-btn:first-child { border-radius: 8px 0 0 8px; }
+.view-btn:last-child  { border-radius: 0 8px 8px 0; border-left: none; }
+.view-btn:not(:first-child):not(:last-child) { border-left: none; }
+.view-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
 /* ── Transactions ────────────────────────────────────────────── */
 .txn-row {
   display: flex;

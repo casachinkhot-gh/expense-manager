@@ -203,9 +203,10 @@ const expenseTypeName = id => { const e = data.expenseTypes.find(e => e.id === i
 // APP STATE
 // ═══════════════════════════════════════════════════════════════
 
-let currentTab = 'dashboard';
-let txnYear    = new Date().getFullYear();
-let txnMonth   = new Date().getMonth() + 1;
+let currentTab  = 'dashboard';
+let txnYear     = new Date().getFullYear();
+let txnMonth    = new Date().getMonth() + 1;
+let txnView     = 'list';   // 'list' | 'category' | 'account'
 let modalSaveFn = null;
 
 // ═══════════════════════════════════════════════════════════════
@@ -291,44 +292,55 @@ function renderDashboard() {
 // ═══════════════════════════════════════════════════════════════
 
 function renderTransactions() {
-  const txns = monthlyTxns(txnYear, txnMonth).sort((a, b) => b.date.localeCompare(a.date));
-  const inc  = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const exp  = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  const net  = inc - exp;
-  const ym   = currentYM();
+  const txns       = monthlyTxns(txnYear, txnMonth).sort((a, b) => b.date.localeCompare(a.date));
+  const inc        = txns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const exp        = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const net        = inc - exp;
+  const ym         = currentYM();
   const isCurrent  = txnYear === ym.year && txnMonth === ym.month;
   const noAccounts = !data.accounts.length;
 
-  let listHTML = !txns.length
-    ? '<p class="empty-msg">No transactions for this month.</p>'
-    : txns.map(t => {
-        const cls      = { income: 'green', expense: 'red', transfer: 'orange' }[t.type] || '';
-        const catLine  = t.type === 'expense' && t.expenseTypeId
-          ? `<span class="txn-category">${esc(expenseTypeName(t.expenseTypeId))}</span>` : '';
-        const xferLine = t.type === 'transfer'
-          ? `<span class="txn-category">→ ${esc(accountName(t.toAccountId))}</span>` : '';
-        const noteLine = t.note ? `<div class="txn-note">${esc(t.note)}</div>` : '';
-        return `<div class="txn-row">
-          <div class="txn-left">
-            <div class="txn-top"><span class="tag tag-${cls}">${t.type}</span>${catLine}${xferLine}</div>
-            <div class="txn-account">${esc(accountName(t.accountId))}</div>
-            ${noteLine}
-          </div>
-          <div class="txn-right">
-            <span class="txn-amount ${cls}">${fmtCurrency(t.amount)}</span>
-            <span class="txn-date">${fmtDate(t.date)}</span>
-            <div style="display:flex;gap:4px">
-              <button class="edit-btn"   data-edit-txn="${t.id}">✎</button>
-              <button class="delete-btn" data-del-txn="${t.id}">✕</button>
+  let bodyHTML = '';
+  if (txnView === 'category') {
+    bodyHTML = renderCategoryView(txns);
+  } else if (txnView === 'account') {
+    bodyHTML = renderAccountView(txns);
+  } else {
+    const listHTML = !txns.length
+      ? '<p class="empty-msg">No transactions for this month.</p>'
+      : txns.map(t => {
+          const cls      = { income: 'green', expense: 'red', transfer: 'orange' }[t.type] || '';
+          const catLine  = t.type === 'expense' && t.expenseTypeId
+            ? `<span class="txn-category">${esc(expenseTypeName(t.expenseTypeId))}</span>` : '';
+          const xferLine = t.type === 'transfer'
+            ? `<span class="txn-category">→ ${esc(accountName(t.toAccountId))}</span>` : '';
+          const noteLine = t.note ? `<div class="txn-note">${esc(t.note)}</div>` : '';
+          return `<div class="txn-row">
+            <div class="txn-left">
+              <div class="txn-top"><span class="tag tag-${cls}">${t.type}</span>${catLine}${xferLine}</div>
+              <div class="txn-account">${esc(accountName(t.accountId))}</div>
+              ${noteLine}
             </div>
-          </div>
-        </div>`;
-      }).join('');
+            <div class="txn-right">
+              <span class="txn-amount ${cls}">${fmtCurrency(t.amount)}</span>
+              <span class="txn-date">${fmtDate(t.date)}</span>
+              <div style="display:flex;gap:4px">
+                <button class="edit-btn"   data-edit-txn="${t.id}">✎</button>
+                <button class="delete-btn" data-del-txn="${t.id}">✕</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+    bodyHTML = card(listHTML);
+  }
 
   return `
     <div class="page-header">
       <h1>Transactions</h1>
-      <button class="header-btn" onclick="openAddTxn()" ${noAccounts ? 'disabled' : ''}>+ Add</button>
+      <div style="display:flex;gap:8px">
+        <button class="header-btn" onclick="exportMonthExcel()">⬇ Excel</button>
+        <button class="header-btn" onclick="openAddTxn()" ${noAccounts ? 'disabled' : ''}>+ Add</button>
+      </div>
     </div>
     <div class="month-nav">
       <button onclick="shiftMonth(-1)">‹</button>
@@ -340,7 +352,12 @@ function renderTransactions() {
       <span class="red">▲ ${fmtCurrency(exp)}</span>
       <span class="${colorCls(net)}">Net: ${fmtCurrency(net)}</span>
     </div>
-    <div class="page-content">${card(listHTML)}</div>`;
+    <div class="view-switcher">
+      <button class="view-btn ${txnView==='list'     ?'active':''}" onclick="setTxnView('list')">List</button>
+      <button class="view-btn ${txnView==='category' ?'active':''}" onclick="setTxnView('category')">By Category</button>
+      <button class="view-btn ${txnView==='account'  ?'active':''}" onclick="setTxnView('account')">By Account</button>
+    </div>
+    <div class="page-content">${bodyHTML}</div>`;
 }
 
 function shiftMonth(delta) {
@@ -348,6 +365,131 @@ function shiftMonth(delta) {
   d.setMonth(d.getMonth() + delta);
   txnYear = d.getFullYear(); txnMonth = d.getMonth() + 1;
   render();
+}
+
+function setTxnView(v) { txnView = v; render(); }
+
+function renderCategoryView(txns) {
+  const expTxns = txns.filter(t => t.type === 'expense');
+  const incTxns = txns.filter(t => t.type === 'income');
+  let html = '';
+
+  // Expenses by category
+  if (expTxns.length) {
+    const byCategory = {};
+    expTxns.forEach(t => {
+      const key = t.expenseTypeId || '__none__';
+      byCategory[key] = (byCategory[key] || 0) + t.amount;
+    });
+    const totalExp = expTxns.reduce((s, t) => s + t.amount, 0);
+    const sorted   = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    let rows = sorted.map(([id, total]) => {
+      const label = id === '__none__' ? '📌 Uncategorized' : expenseTypeName(id);
+      const pct   = totalExp > 0 ? Math.round(total / totalExp * 100) : 0;
+      return `<div class="row">
+        <span class="row-label">${esc(label)} <span class="txn-date">(${pct}%)</span></span>
+        <span class="row-value red">${fmtCurrency(total)}</span>
+      </div>`;
+    }).join('');
+    rows += divRow() + row(bold('Total Expenses'), bold(fmtCurrency(totalExp)), 'red');
+    html += section('Expenses by Category', rows);
+  }
+
+  // Income by category
+  if (incTxns.length) {
+    const byCategory = {};
+    incTxns.forEach(t => {
+      const key = t.expenseTypeId || '__none__';
+      byCategory[key] = (byCategory[key] || 0) + t.amount;
+    });
+    const totalInc = incTxns.reduce((s, t) => s + t.amount, 0);
+    const sorted   = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    let rows = sorted.map(([id, total]) => {
+      const label = id === '__none__' ? '💼 General Income' : expenseTypeName(id);
+      return row(esc(label), fmtCurrency(total), 'green');
+    }).join('');
+    rows += divRow() + row(bold('Total Income'), bold(fmtCurrency(totalInc)), 'green');
+    html += section('Income by Category', rows);
+  }
+
+  if (!html) html = card('<p class="empty-msg">No transactions for this month.</p>');
+  return html;
+}
+
+function renderAccountView(txns) {
+  let html = '';
+  data.accounts.forEach(acc => {
+    const accInc = txns.filter(t => t.accountId === acc.id && t.type === 'income')
+                       .reduce((s, t) => s + t.amount, 0);
+    const accExp = txns.filter(t => t.accountId === acc.id && t.type === 'expense')
+                       .reduce((s, t) => s + t.amount, 0);
+    const xferIn  = txns.filter(t => t.toAccountId === acc.id && t.type === 'transfer')
+                        .reduce((s, t) => s + t.amount, 0);
+    const xferOut = txns.filter(t => t.accountId === acc.id && t.type === 'transfer')
+                        .reduce((s, t) => s + t.amount, 0);
+    if (!accInc && !accExp && !xferIn && !xferOut) return;
+    const net = accInc - accExp + xferIn - xferOut;
+    html += `<div class="row account-row">
+      <div>
+        <div class="row-label">${esc(acc.name)}</div>
+        <div class="txn-date" style="margin-top:4px;display:flex;gap:10px;flex-wrap:wrap">
+          ${accInc  ? `<span class="green">In ▼ ${fmtCurrency(accInc)}</span>`   : ''}
+          ${accExp  ? `<span class="red">Out ▲ ${fmtCurrency(accExp)}</span>`     : ''}
+          ${xferIn  ? `<span>Xfer In ${fmtCurrency(xferIn)}</span>`              : ''}
+          ${xferOut ? `<span>Xfer Out ${fmtCurrency(xferOut)}</span>`            : ''}
+        </div>
+      </div>
+      <span class="row-value ${colorCls(net)}">${fmtCurrency(net)}</span>
+    </div>`;
+  });
+  if (!html) html = '<p class="empty-msg">No transactions for this month.</p>';
+  return section('By Account', html);
+}
+
+function exportMonthExcel() {
+  const txns   = monthlyTxns(txnYear, txnMonth).sort((a, b) => b.date.localeCompare(a.date));
+  const label  = `${shortMonth(txnMonth)}_${txnYear}`;
+  const wb     = XLSX.utils.book_new();
+
+  // Sheet 1 — Transaction List
+  const txnRows = [['Date','Type','Category','Account','To Account','Amount (₹)','Note']];
+  txns.forEach(t => txnRows.push([
+    fmtDate(t.date), t.type,
+    t.expenseTypeId ? expenseTypeName(t.expenseTypeId) : '',
+    accountName(t.accountId),
+    t.toAccountId   ? accountName(t.toAccountId) : '',
+    t.type === 'income' ? t.amount : -t.amount,
+    t.note || ''
+  ]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(txnRows), 'Transactions');
+
+  // Sheet 2 — By Category
+  const expTxns  = txns.filter(t => t.type === 'expense');
+  const catMap   = {};
+  expTxns.forEach(t => {
+    const k = t.expenseTypeId ? expenseTypeName(t.expenseTypeId) : 'Uncategorized';
+    catMap[k] = (catMap[k] || 0) + t.amount;
+  });
+  const catRows = [['Category','Amount (₹)','% of Expenses']];
+  const totalExp = expTxns.reduce((s, t) => s + t.amount, 0);
+  Object.entries(catMap).sort((a,b) => b[1]-a[1]).forEach(([k,v]) =>
+    catRows.push([k, v, totalExp ? Math.round(v/totalExp*100)+'%' : '0%']));
+  catRows.push([], ['Total Expenses', totalExp, '100%']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(catRows), 'By Category');
+
+  // Sheet 3 — By Account
+  const accRows = [['Account','Income (₹)','Expenses (₹)','Transfers In','Transfers Out','Net (₹)']];
+  data.accounts.forEach(acc => {
+    const aInc  = txns.filter(t => t.accountId===acc.id && t.type==='income').reduce((s,t)=>s+t.amount,0);
+    const aExp  = txns.filter(t => t.accountId===acc.id && t.type==='expense').reduce((s,t)=>s+t.amount,0);
+    const aXIn  = txns.filter(t => t.toAccountId===acc.id && t.type==='transfer').reduce((s,t)=>s+t.amount,0);
+    const aXOut = txns.filter(t => t.accountId===acc.id && t.type==='transfer').reduce((s,t)=>s+t.amount,0);
+    if (aInc||aExp||aXIn||aXOut)
+      accRows.push([acc.name, aInc, aExp, aXIn, aXOut, aInc-aExp+aXIn-aXOut]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(accRows), 'By Account');
+
+  XLSX.writeFile(wb, `Transactions_${label}.xlsx`);
 }
 
 function openAddTxn() {
