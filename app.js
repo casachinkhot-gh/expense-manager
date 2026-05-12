@@ -317,7 +317,10 @@ function renderTransactions() {
           <div class="txn-right">
             <span class="txn-amount ${cls}">${fmtCurrency(t.amount)}</span>
             <span class="txn-date">${fmtDate(t.date)}</span>
-            <button class="delete-btn" data-del-txn="${t.id}">✕</button>
+            <div style="display:flex;gap:4px">
+              <button class="edit-btn"   data-edit-txn="${t.id}">✎</button>
+              <button class="delete-btn" data-del-txn="${t.id}">✕</button>
+            </div>
           </div>
         </div>`;
       }).join('');
@@ -416,6 +419,76 @@ function saveTxn() {
     expenseTypeId: type === 'expense'  ? (catId || null) : null,
     note
   });
+  saveData();
+  return true;
+}
+
+function openEditTxn(id) {
+  const txn = data.transactions.find(t => t.id === id);
+  if (!txn) return;
+  const accOpts = data.accounts.map(a =>
+    `<option value="${a.id}" ${a.id === txn.accountId ? 'selected':''}>${esc(a.name)} (${a.type})</option>`).join('');
+  const toAccOpts = data.accounts.map(a =>
+    `<option value="${a.id}" ${a.id === txn.toAccountId ? 'selected':''}>${esc(a.name)} (${a.type})</option>`).join('');
+  const catOpts = data.expenseTypes.map(e =>
+    `<option value="${e.id}" ${e.id === txn.expenseTypeId ? 'selected':''}>${esc(e.emoji+' '+e.name)}</option>`).join('');
+  const t = txn.type;
+  showModal('Edit Transaction', `
+    <div class="form-group">
+      <label>Type</label>
+      <div class="seg-control" id="txn-seg">
+        <button class="seg-btn ${t==='expense'?'active':''}"  data-val="expense"  onclick="setSeg(this,'txn-seg');toggleTxnFields()">Expense</button>
+        <button class="seg-btn ${t==='income'?'active':''}"   data-val="income"   onclick="setSeg(this,'txn-seg');toggleTxnFields()">Income</button>
+        <button class="seg-btn ${t==='transfer'?'active':''}" data-val="transfer" onclick="setSeg(this,'txn-seg');toggleTxnFields()">Transfer</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Amount (₹)</label>
+      <input id="f-amount" type="number" min="0.01" step="0.01" inputmode="decimal" value="${txn.amount}">
+    </div>
+    <div class="form-group">
+      <label>Date</label>
+      <input id="f-date" type="date" value="${txn.date}">
+    </div>
+    <div class="form-group">
+      <label>Account</label>
+      <select id="f-acc"><option value="">— Select —</option>${accOpts}</select>
+    </div>
+    <div class="form-group" id="f-to-grp" style="display:${t==='transfer'?'':'none'}">
+      <label>To Account</label>
+      <select id="f-to-acc"><option value="">— Select —</option>${toAccOpts}</select>
+    </div>
+    <div class="form-group" id="f-cat-grp" style="display:${t==='expense'?'':'none'}">
+      <label>Category</label>
+      <select id="f-cat"><option value="">— None —</option>${catOpts}</select>
+    </div>
+    <div class="form-group">
+      <label>Note (optional)</label>
+      <input id="f-note" type="text" value="${esc(txn.note||'')}">
+    </div>
+  `, () => saveEditTxn(id));
+}
+
+function saveEditTxn(id) {
+  const type      = getActiveSeg('txn-seg');
+  const amount    = parseFloat(document.getElementById('f-amount').value);
+  const date      = document.getElementById('f-date').value;
+  const accountId = document.getElementById('f-acc').value;
+  const toAccId   = document.getElementById('f-to-acc')?.value || '';
+  const catId     = document.getElementById('f-cat')?.value   || '';
+  const note      = document.getElementById('f-note').value.trim();
+  if (!amount || amount <= 0) { alert('Enter a valid amount.'); return false; }
+  if (!date)      { alert('Select a date.');     return false; }
+  if (!accountId) { alert('Select an account.'); return false; }
+  if (type === 'transfer' && !toAccId)              { alert('Select a destination account.'); return false; }
+  if (type === 'transfer' && toAccId === accountId) { alert('From and To must differ.');       return false; }
+  const i = data.transactions.findIndex(t => t.id === id);
+  if (i >= 0) data.transactions[i] = {
+    ...data.transactions[i], date, amount, type, accountId,
+    toAccountId:   type === 'transfer' ? toAccId : null,
+    expenseTypeId: type === 'expense'  ? (catId || null) : null,
+    note
+  };
   saveData();
   return true;
 }
@@ -555,7 +628,10 @@ function renderNetWorth() {
   if (!hasRows) plHTML += '<p class="empty-msg">No transactions in the last 12 months.</p>';
 
   return `
-    <div class="page-header"><h1>Net Worth</h1></div>
+    <div class="page-header">
+      <h1>Net Worth</h1>
+      <button class="header-btn" onclick="exportExcel()">⬇ Excel</button>
+    </div>
     <div class="page-content">
       ${section('Current Net Worth', brkHTML)}
       ${section('Monthly P&L — Last 12 Months', plHTML)}
@@ -580,7 +656,10 @@ function renderSettings() {
           </div>
           <div class="txn-date">Current: ${fmtCurrency(balance(acc.id))}</div>
         </div>
-        <button class="delete-btn" data-del-acc="${acc.id}">✕</button>
+        <div style="display:flex;gap:6px">
+          <button class="edit-btn"   data-edit-acc="${acc.id}">✎</button>
+          <button class="delete-btn" data-del-acc="${acc.id}">✕</button>
+        </div>
       </div>`).join('')
     : '<p class="empty-msg">No accounts yet.</p>';
   accHTML += `<button class="add-row-btn" onclick="openAddAccount()">+ Add Account</button>`;
@@ -641,6 +720,44 @@ function saveAccount() {
   return true;
 }
 
+function openEditAccount(id) {
+  const acc = data.accounts.find(a => a.id === id);
+  if (!acc) return;
+  const typeOpts = ACCOUNT_TYPES.map(t =>
+    `<option value="${t}" ${acc.type === t ? 'selected' : ''}>${t}</option>`).join('');
+  showModal('Edit Account', `
+    <div class="form-group">
+      <label>Account Name</label>
+      <input id="ac-name" type="text" value="${esc(acc.name)}">
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="ac-type">${typeOpts}</select>
+    </div>
+    <div class="form-group">
+      <label>Opening Balance (₹)</label>
+      <input id="ac-bal" type="number" step="0.01" inputmode="decimal" value="${acc.openingBalance}">
+    </div>
+    <div class="form-group">
+      <label>As of Date</label>
+      <input id="ac-date" type="date" value="${acc.openingDate}">
+    </div>
+  `, () => saveEditAccount(id));
+}
+
+function saveEditAccount(id) {
+  const name = document.getElementById('ac-name').value.trim();
+  const type = document.getElementById('ac-type').value;
+  const bal  = parseFloat(document.getElementById('ac-bal').value) || 0;
+  const date = document.getElementById('ac-date').value;
+  if (!name) { alert('Enter an account name.'); return false; }
+  if (!date) { alert('Select a date.');         return false; }
+  const i = data.accounts.findIndex(a => a.id === id);
+  if (i >= 0) data.accounts[i] = { ...data.accounts[i], name, type, openingBalance: bal, openingDate: date };
+  saveData();
+  return true;
+}
+
 const EMOJI_PALETTE = ['🍽️','🚗','💡','🛍️','💊','🎬','🏠','💼','✈️','📚','🎓','🏋️','👗','💇','🖥️','🏏','🐾','🎵','🎮','🏥','⛽','🔧','🌐','📌'];
 
 function openAddExpenseType() {
@@ -675,6 +792,54 @@ function saveExpenseType() {
   data.expenseTypes.push({ id: uuid(), name, emoji });
   saveData();
   return true;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EXCEL EXPORT
+// ═══════════════════════════════════════════════════════════════
+
+function exportExcel() {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1 — Account Balances
+  const accRows = [['Account', 'Type', 'Opening Balance', 'Current Balance']];
+  data.accounts.forEach(a =>
+    accRows.push([a.name, a.type, a.openingBalance, balance(a.id)]));
+  accRows.push([], ['Total Liquid', '', '', totalLiquid()],
+                   ['Total Liabilities', '', '', totalLiabilities()],
+                   ['Net Worth', '', '', netWorth()]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(accRows), 'Accounts');
+
+  // Sheet 2 — All Transactions
+  const txnRows = [['Date', 'Type', 'Category', 'Account', 'To Account', 'Amount (₹)', 'Note']];
+  [...data.transactions].sort((a, b) => b.date.localeCompare(a.date)).forEach(t =>
+    txnRows.push([
+      fmtDate(t.date), t.type,
+      t.expenseTypeId ? expenseTypeName(t.expenseTypeId) : '',
+      accountName(t.accountId),
+      t.toAccountId   ? accountName(t.toAccountId) : '',
+      t.type === 'income' ? t.amount : -t.amount,
+      t.note || ''
+    ]));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(txnRows), 'Transactions');
+
+  // Sheet 3 — Assets
+  const assetRows = [['Name', 'Category', 'Value (₹)', 'As of Date']];
+  data.assets.forEach(a =>
+    assetRows.push([a.name, a.category, a.value, fmtDate(a.asOfDate)]));
+  assetRows.push([], ['Total Assets', '', totalAssets(), '']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(assetRows), 'Assets');
+
+  // Sheet 4 — Monthly P&L
+  const plRows = [['Month', 'Income (₹)', 'Expenses (₹)', 'Net Savings (₹)']];
+  lastNMonths(12).forEach(ym => {
+    const inc = monthlyIncome(ym.year, ym.month);
+    const exp = monthlyExpenses(ym.year, ym.month);
+    if (inc || exp) plRows.push([`${shortMonth(ym.month)} ${ym.year}`, inc, exp, inc - exp]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(plRows), 'Monthly P&L');
+
+  XLSX.writeFile(wb, `ExpenseReport_${todayISO()}.xlsx`);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -731,6 +896,10 @@ function attachListeners() {
   }));
   document.querySelectorAll('[data-edit-asset]').forEach(btn =>
     btn.addEventListener('click', () => openAddAsset(btn.dataset.editAsset)));
+  document.querySelectorAll('[data-edit-txn]').forEach(btn =>
+    btn.addEventListener('click', () => openEditTxn(btn.dataset.editTxn)));
+  document.querySelectorAll('[data-edit-acc]').forEach(btn =>
+    btn.addEventListener('click', () => openEditAccount(btn.dataset.editAcc)));
   document.querySelectorAll('[data-del-et]').forEach(btn => btn.addEventListener('click', () => {
     if (!confirm('Delete this category?')) return;
     data.expenseTypes = data.expenseTypes.filter(e => e.id !== btn.dataset.delEt);
