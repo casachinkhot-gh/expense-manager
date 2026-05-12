@@ -126,10 +126,30 @@ function saveData() {
 // ═══════════════════════════════════════════════════════════════
 
 function signIn() {
-  const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ login_hint: 'casachinkhot@gmail.com' });
-  // Redirect works reliably on all devices (popup is blocked on iOS)
-  auth.signInWithRedirect(provider);
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl    = document.getElementById('login-error');
+  errEl.style.display = 'none';
+
+  if (!email || !password) {
+    errEl.textContent = 'Please enter your email and password.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  auth.signInWithEmailAndPassword(email, password)
+    .catch(err => {
+      errEl.style.display = 'block';
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        errEl.textContent = 'Incorrect password. Check your email for the reset link.';
+      } else if (err.code === 'auth/user-not-found') {
+        errEl.textContent = 'No account found for this email.';
+      } else if (err.code === 'auth/too-many-requests') {
+        errEl.textContent = 'Too many attempts. Please try again later.';
+      } else {
+        errEl.textContent = err.message;
+      }
+    });
 }
 
 function confirmSignOut() {
@@ -736,19 +756,9 @@ function init() {
     if (e.target.id === 'modal-overlay') closeModal();
   });
 
-  // Handle redirect sign-in result (all platforms)
-  auth.getRedirectResult()
-    .then(result => {
-      if (result && result.user) {
-        // Successfully signed in via redirect — onAuthStateChanged will fire
-      }
-    })
-    .catch(err => {
-      if (err.code !== 'auth/no-auth-event') {
-        document.querySelector('.login-card p').textContent =
-          'Sign-in failed: ' + (err.message || 'Please try again.');
-      }
-    });
+  // Allow submitting login form with Enter key
+  document.getElementById('login-password')
+    .addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
 
   // Auth state drives everything
   auth.onAuthStateChanged(user => {

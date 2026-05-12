@@ -18,12 +18,17 @@
     <div class="login-card">
       <div class="login-icon">💰</div>
       <h1>Expense Manager</h1>
-      <p>Sign in to keep your data synced across all your devices.</p>
-      <button onclick="signIn()" class="google-btn">
-        <span class="google-btn-g">G</span>
-        Sign in with Google
-      </button>
-      <p class="login-note">Uses your existing Google account — no new password needed.</p>
+      <div class="form-group" style="text-align:left">
+        <label>Email</label>
+        <input id="login-email" type="email" value="casachinkhot@gmail.com" autocomplete="email">
+      </div>
+      <div class="form-group" style="text-align:left">
+        <label>Password</label>
+        <input id="login-password" type="password" placeholder="Enter your password" autocomplete="current-password">
+      </div>
+      <p id="login-error" style="color:#FF3B30;font-size:13px;margin-bottom:12px;display:none"></p>
+      <button onclick="signIn()" class="google-btn">Sign In</button>
+      <p class="login-note">Your data syncs automatically across all devices.</p>
     </div>
   </div>
 
