@@ -1,0 +1,379 @@
+:root {
+  --primary: #007AFF;
+  --green: #34C759;
+  --red: #FF3B30;
+  --orange: #FF9500;
+  --bg: #F2F2F7;
+  --card: #FFFFFF;
+  --text: #1C1C1E;
+  --text2: #6C6C70;
+  --border: rgba(0,0,0,0.09);
+  --tab-h: 50px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.45;
+  overflow: hidden;
+}
+
+/* ── Layout ─────────────────────────────────────────────────── */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+#content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) + 8px);
+}
+
+/* ── Tab Bar ─────────────────────────────────────────────────── */
+#tab-bar {
+  display: flex;
+  height: calc(var(--tab-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text2);
+  gap: 1px;
+  padding: 6px 0 4px;
+  transition: color 0.15s;
+}
+.tab-btn.active { color: var(--primary); }
+.tab-icon { font-size: 21px; line-height: 1; }
+.tab-label { font-size: 10px; font-weight: 500; }
+
+/* ── Page Shell ──────────────────────────────────────────────── */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 6px;
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.page-header h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.4px; }
+
+.header-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 20px;
+  padding: 7px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.header-btn:disabled { background: var(--text2); opacity: 0.45; cursor: default; }
+
+.page-content { padding: 8px 16px 16px; }
+
+/* ── Section / Card ──────────────────────────────────────────── */
+.section { margin-bottom: 24px; }
+.section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 7px;
+  padding-left: 4px;
+}
+.card {
+  background: var(--card);
+  border-radius: 13px;
+  overflow: hidden;
+}
+
+/* ── Rows ────────────────────────────────────────────────────── */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: none; }
+.row-label { color: var(--text); }
+.row-value { font-weight: 500; flex-shrink: 0; margin-left: 12px; }
+.account-row { align-items: flex-start; }
+
+.divider-row {
+  height: 1px;
+  background: var(--border);
+  margin: 0 15px;
+}
+
+/* ── Tags ────────────────────────────────────────────────────── */
+.tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 20px;
+  line-height: 1.4;
+}
+.tag-blue   { background: rgba(0,122,255,.13); color: var(--primary); }
+.tag-red    { background: rgba(255,59,48,.13);  color: var(--red); }
+.tag-green  { background: rgba(52,199,89,.13);  color: var(--green); }
+.tag-orange { background: rgba(255,149,0,.13);  color: var(--orange); }
+
+/* ── Colour helpers ──────────────────────────────────────────── */
+.green  { color: var(--green) !important; }
+.red    { color: var(--red)   !important; }
+.blue   { color: var(--primary) !important; }
+.orange { color: var(--orange)  !important; }
+
+/* ── Month Nav ───────────────────────────────────────────────── */
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.month-nav button {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--primary);
+  padding: 0 6px;
+  line-height: 1;
+}
+.month-nav button:disabled { color: var(--text2); opacity: 0.35; cursor: default; }
+
+/* ── Summary Bar ─────────────────────────────────────────────── */
+.summary-bar {
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 16px;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+/* ── Transactions ────────────────────────────────────────────── */
+.txn-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 11px 15px;
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+.txn-row:last-child { border-bottom: none; }
+.txn-left { flex: 1; min-width: 0; }
+.txn-right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.txn-top { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.txn-account { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.txn-category { font-size: 12px; color: var(--text2); }
+.txn-note { font-size: 12px; color: var(--text2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.txn-amount { font-size: 16px; font-weight: 600; }
+.txn-date { font-size: 11px; color: var(--text2); }
+
+/* ── P&L Table ───────────────────────────────────────────────── */
+.pl-header, .pl-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 1fr 1fr;
+  gap: 4px;
+  padding: 8px 15px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+}
+.pl-header { font-weight: 700; font-size: 11px; color: var(--text2); }
+.pl-row:last-child { border-bottom: none; }
+.pl-row span, .pl-header span { text-align: right; }
+.pl-row span:first-child, .pl-header span:first-child { text-align: left; color: var(--text); }
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+.delete-btn {
+  background: rgba(255,59,48,.12);
+  color: var(--red);
+  border: none;
+  border-radius: 50%;
+  width: 28px; height: 28px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.edit-btn {
+  background: rgba(0,122,255,.12);
+  color: var(--primary);
+  border: none;
+  border-radius: 50%;
+  width: 28px; height: 28px;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.add-row-btn {
+  width: 100%;
+  padding: 12px 15px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--primary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+}
+
+/* ── Empty State ─────────────────────────────────────────────── */
+.empty-msg {
+  padding: 16px 15px;
+  color: var(--text2);
+  font-size: 14px;
+}
+
+/* ── Modal ───────────────────────────────────────────────────── */
+#modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.48);
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+}
+#modal-overlay.hidden { display: none; }
+
+#modal-container {
+  background: var(--card);
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
+  max-height: 92vh;
+  border-radius: 20px 20px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+#modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#modal-header h3 { font-size: 16px; font-weight: 600; }
+#modal-cancel { background: none; border: none; color: var(--text2); font-size: 15px; cursor: pointer; }
+#modal-save   { background: none; border: none; color: var(--primary); font-size: 15px; font-weight: 600; cursor: pointer; }
+
+#modal-body { overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px; }
+
+/* ── Forms ───────────────────────────────────────────────────── */
+.form-group { margin-bottom: 18px; }
+.form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+}
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.form-group input:focus,
+.form-group select:focus { border-color: var(--primary); }
+
+/* ── Segmented Control ───────────────────────────────────────── */
+.seg-control {
+  display: flex;
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+.seg-btn {
+  flex: 1;
+  padding: 7px 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text2);
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.seg-btn.active {
+  background: var(--card);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+}
+
+/* ── Emoji Grid ──────────────────────────────────────────────── */
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 5px;
+}
+.emoji-btn {
+  background: var(--bg);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 5px;
+  font-size: 20px;
+  cursor: pointer;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.emoji-btn.active { border-color: var(--primary); background: rgba(0,122,255,.08); }

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Expenses">
+  <meta name="theme-color" content="#F2F2F7">
+  <title>Expense Manager</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="content"></div>
+    <nav id="tab-bar">
+      <button class="tab-btn active" data-tab="dashboard">
+        <span class="tab-icon">🏠</span>
+        <span class="tab-label">Dashboard</span>
+      </button>
+      <button class="tab-btn" data-tab="transactions">
+        <span class="tab-icon">📋</span>
+        <span class="tab-label">Transactions</span>
+      </button>
+      <button class="tab-btn" data-tab="assets">
+        <span class="tab-icon">🏦</span>
+        <span class="tab-label">Assets</span>
+      </button>
+      <button class="tab-btn" data-tab="networth">
+        <span class="tab-icon">💰</span>
+        <span class="tab-label">Net Worth</span>
+      </button>
+      <button class="tab-btn" data-tab="settings">
+        <span class="tab-icon">⚙️</span>
+        <span class="tab-label">Settings</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Bottom-sheet modal -->
+  <div id="modal-overlay" class="hidden">
+    <div id="modal-container">
+      <div id="modal-header">
+        <button id="modal-cancel">Cancel</button>
+        <h3 id="modal-title"></h3>
+        <button id="modal-save">Save</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
