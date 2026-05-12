@@ -128,14 +128,8 @@ function saveData() {
 function signIn() {
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ login_hint: 'casachinkhot@gmail.com' });
-  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if (isMobile) {
-    auth.signInWithRedirect(provider);
-  } else {
-    auth.signInWithPopup(provider).catch(err => {
-      if (err.code === 'auth/popup-blocked') auth.signInWithRedirect(provider);
-    });
-  }
+  // Redirect works reliably on all devices (popup is blocked on iOS)
+  auth.signInWithRedirect(provider);
 }
 
 function confirmSignOut() {
@@ -742,8 +736,19 @@ function init() {
     if (e.target.id === 'modal-overlay') closeModal();
   });
 
-  // Handle redirect sign-in result (mobile)
-  auth.getRedirectResult().catch(() => {});
+  // Handle redirect sign-in result (all platforms)
+  auth.getRedirectResult()
+    .then(result => {
+      if (result && result.user) {
+        // Successfully signed in via redirect — onAuthStateChanged will fire
+      }
+    })
+    .catch(err => {
+      if (err.code !== 'auth/no-auth-event') {
+        document.querySelector('.login-card p').textContent =
+          'Sign-in failed: ' + (err.message || 'Please try again.');
+      }
+    });
 
   // Auth state drives everything
   auth.onAuthStateChanged(user => {

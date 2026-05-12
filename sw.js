@@ -1,4 +1,4 @@
-const CACHE = 'expense-mgr-v2';
+const CACHE = 'expense-mgr-v3';
 const FILES = ['./', './index.html', './style.css', './app.js', './manifest.json'];
 
 self.addEventListener('install', e => {
