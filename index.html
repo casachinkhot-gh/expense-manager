@@ -12,7 +12,23 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="app">
+
+  <!-- Login Screen -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="login-icon">💰</div>
+      <h1>Expense Manager</h1>
+      <p>Sign in to keep your data synced across all your devices.</p>
+      <button onclick="signIn()" class="google-btn">
+        <span class="google-btn-g">G</span>
+        Sign in with Google
+      </button>
+      <p class="login-note">Uses your existing Google account — no new password needed.</p>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="hidden">
     <div id="content"></div>
     <nav id="tab-bar">
       <button class="tab-btn active" data-tab="dashboard">
@@ -50,6 +66,10 @@
     </div>
   </div>
 
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,6 +1,26 @@
 'use strict';
 
 // ═══════════════════════════════════════════════════════════════
+// FIREBASE INIT
+// ═══════════════════════════════════════════════════════════════
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCZBz0zFCDrn1k1TKWWkvTKpzYD1BatO84",
+  authDomain: "expense-manager-e19eb.firebaseapp.com",
+  projectId: "expense-manager-e19eb",
+  storageBucket: "expense-manager-e19eb.firebasestorage.app",
+  messagingSenderId: "156515248598",
+  appId: "1:156515248598:web:5656b8ac725d015fcd5c77"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
+
+// Enable offline persistence (app works without internet too)
+db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+// ═══════════════════════════════════════════════════════════════
 // UTILITIES
 // ═══════════════════════════════════════════════════════════════
 
@@ -15,18 +35,15 @@ const INR = new Intl.NumberFormat('en-IN', {
 });
 const fmtCurrency = n => INR.format(n);
 
-// Parse ISO date string in local time (avoids UTC-midnight timezone issues)
 function parseISO(iso) {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(y, m - 1, d);
 }
-
 function fmtDate(iso) {
   return parseISO(iso).toLocaleDateString('en-IN', {
     day: 'numeric', month: 'short', year: 'numeric'
   });
 }
-
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -36,18 +53,15 @@ const MONTH_FULL  = ['January','February','March','April','May','June',
                      'July','August','September','October','November','December'];
 const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun',
                      'Jul','Aug','Sep','Oct','Nov','Dec'];
-
-function fullMonth(m) { return MONTH_FULL[m-1]; }
-function shortMonth(m) { return MONTH_SHORT[m-1]; }
+const fullMonth  = m => MONTH_FULL[m-1];
+const shortMonth = m => MONTH_SHORT[m-1];
 
 function currentYM() {
   const d = new Date();
   return { year: d.getFullYear(), month: d.getMonth() + 1 };
 }
-
 function lastNMonths(n) {
-  const result = [];
-  const d = new Date();
+  const result = [], d = new Date();
   for (let i = 0; i < n; i++) {
     result.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
     d.setMonth(d.getMonth() - 1);
@@ -58,8 +72,6 @@ function lastNMonths(n) {
 // ═══════════════════════════════════════════════════════════════
 // DATA LAYER
 // ═══════════════════════════════════════════════════════════════
-
-const STORE_KEY = 'expenseMgr_v1';
 
 const SEED_EXPENSE_TYPES = [
   { name: 'Food & Dining',  emoji: '🍽️' },
@@ -74,26 +86,62 @@ const SEED_EXPENSE_TYPES = [
 ].map(e => ({ ...e, id: uuid() }));
 
 let data = { expenseTypes: [], accounts: [], transactions: [], assets: [] };
+let firestoreUnsub = null;
 
-function loadData() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      data = JSON.parse(raw);
+function userDocRef(uid) {
+  return db.collection('users').doc(uid).collection('data').doc('appdata');
+}
+
+function setupSync(uid) {
+  if (firestoreUnsub) firestoreUnsub();
+  firestoreUnsub = userDocRef(uid).onSnapshot(snap => {
+    if (snap.exists) {
+      const d = snap.data();
+      data.expenseTypes  = d.expenseTypes  || SEED_EXPENSE_TYPES;
+      data.accounts      = d.accounts      || [];
+      data.transactions  = d.transactions  || [];
+      data.assets        = d.assets        || [];
     } else {
-      data.expenseTypes = SEED_EXPENSE_TYPES;
+      // First sign-in — seed defaults
+      data = {
+        expenseTypes: SEED_EXPENSE_TYPES,
+        accounts: [], transactions: [], assets: []
+      };
       saveData();
     }
-  } catch (e) {
-    data.expenseTypes = SEED_EXPENSE_TYPES;
-  }
+    render();
+  }, err => {
+    console.error('Firestore error:', err);
+  });
 }
 
 function saveData() {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(data));
-  } catch (e) {
-    alert('Storage full — could not save.');
+  const user = auth.currentUser;
+  if (!user) return;
+  userDocRef(user.uid).set(data).catch(console.error);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════════════════════
+
+function signIn() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ login_hint: 'casachinkhot@gmail.com' });
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    auth.signInWithRedirect(provider);
+  } else {
+    auth.signInWithPopup(provider).catch(err => {
+      if (err.code === 'auth/popup-blocked') auth.signInWithRedirect(provider);
+    });
+  }
+}
+
+function confirmSignOut() {
+  if (confirm('Sign out? Your data is safely saved in the cloud.')) {
+    if (firestoreUnsub) { firestoreUnsub(); firestoreUnsub = null; }
+    auth.signOut();
   }
 }
 
@@ -101,10 +149,9 @@ function saveData() {
 // COMPUTATIONS
 // ═══════════════════════════════════════════════════════════════
 
-const ACCOUNT_TYPES = ['Bank', 'Cash', 'Credit Card', 'Wallet'];
+const ACCOUNT_TYPES    = ['Bank', 'Cash', 'Credit Card', 'Wallet'];
 const ASSET_CATEGORIES = ['Real Estate', 'Vehicle', 'Gold / Jewelry', 'Investments', 'Other'];
-
-const isLiability = acc => acc.type === 'Credit Card';
+const isLiability      = acc => acc.type === 'Credit Card';
 
 function balance(accountId) {
   const acc = data.accounts.find(a => a.id === accountId);
@@ -116,7 +163,7 @@ function balance(accountId) {
       if (t.type === 'expense')  bal -= t.amount;
       if (t.type === 'transfer') bal -= t.amount;
     } else if (t.toAccountId === accountId) {
-      bal += t.amount; // transfer in
+      bal += t.amount;
     }
   }
   return bal;
@@ -129,13 +176,12 @@ const netWorth         = () => totalLiquid() + totalAssets() + totalLiabilities(
 
 function monthlyTxns(year, month) {
   return data.transactions.filter(t => {
-    const parts = t.date.split('-');
-    return +parts[0] === year && +parts[1] === month;
+    const p = t.date.split('-');
+    return +p[0] === year && +p[1] === month;
   });
 }
 const monthlyIncome   = (y, m) => monthlyTxns(y, m).filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
 const monthlyExpenses = (y, m) => monthlyTxns(y, m).filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-
 const accountName     = id => (data.accounts.find(a => a.id === id) || {}).name || '—';
 const expenseTypeName = id => { const e = data.expenseTypes.find(e => e.id === id); return e ? `${e.emoji} ${e.name}` : ''; };
 
@@ -152,15 +198,15 @@ let modalSaveFn = null;
 // HTML HELPERS
 // ═══════════════════════════════════════════════════════════════
 
-const card    = html  => `<div class="card">${html}</div>`;
-const section = (title, html) =>
+const card     = html => `<div class="card">${html}</div>`;
+const section  = (title, html) =>
   `<div class="section"><div class="section-title">${title}</div>${card(html)}</div>`;
-const row = (label, value, cls = '') =>
+const row      = (label, value, cls = '') =>
   `<div class="row"><span class="row-label">${label}</span><span class="row-value ${cls}">${value}</span></div>`;
-const divRow  = () => `<div class="divider-row"></div>`;
+const divRow   = () => `<div class="divider-row"></div>`;
 const colorCls = n => n >= 0 ? 'green' : 'red';
-const bold    = s => `<strong>${s}</strong>`;
-const esc     = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const bold     = s => `<strong>${s}</strong>`;
+const esc      = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
 // ═══════════════════════════════════════════════════════════════
 // MODAL
@@ -172,7 +218,6 @@ function showModal(title, bodyHTML, onSave) {
   document.getElementById('modal-overlay').classList.remove('hidden');
   modalSaveFn = onSave;
 }
-
 function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
   modalSaveFn = null;
@@ -189,7 +234,6 @@ function renderDashboard() {
   const net = inc - exp;
   const liq = totalLiquid(), liab = totalLiabilities(), ass = totalAssets(), nw = netWorth();
 
-  // Accounts
   let accHTML = '';
   if (!data.accounts.length) {
     accHTML = '<p class="empty-msg">No accounts yet — add one in Settings.</p>';
@@ -208,29 +252,23 @@ function renderDashboard() {
     accHTML += row(bold('Total (excl. credit cards)'), bold(fmtCurrency(liq)), liq < 0 ? 'red' : 'blue');
   }
 
-  // Month
-  const monthHTML = `
-    ${row('Income',   fmtCurrency(inc), 'green')}
-    ${row('Expenses', fmtCurrency(exp), 'red')}
-    ${divRow()}
-    ${row(bold('Net Savings'), bold(fmtCurrency(net)), colorCls(net))}
-  `;
-
-  // Net worth snapshot
-  let nwHTML = `
-    ${row('Bank / Cash / Wallet', fmtCurrency(liq))}
-    ${row('Physical Assets',      fmtCurrency(ass))}
-    ${liab !== 0 ? row('Credit Card Outstanding', fmtCurrency(liab), 'red') : ''}
-    ${divRow()}
-    ${row(bold('Net Worth'), bold(fmtCurrency(nw)), colorCls(nw))}
-  `;
-
   return `
     <div class="page-header"><h1>Dashboard</h1></div>
     <div class="page-content">
       ${section('Running Balances', accHTML)}
-      ${section(`This Month — ${fullMonth(ym.month)} ${ym.year}`, monthHTML)}
-      ${section('Net Worth Snapshot', nwHTML)}
+      ${section(`This Month — ${fullMonth(ym.month)} ${ym.year}`, `
+        ${row('Income',   fmtCurrency(inc), 'green')}
+        ${row('Expenses', fmtCurrency(exp), 'red')}
+        ${divRow()}
+        ${row(bold('Net Savings'), bold(fmtCurrency(net)), colorCls(net))}
+      `)}
+      ${section('Net Worth Snapshot', `
+        ${row('Bank / Cash / Wallet', fmtCurrency(liq))}
+        ${row('Physical Assets',      fmtCurrency(ass))}
+        ${liab !== 0 ? row('Credit Card Outstanding', fmtCurrency(liab), 'red') : ''}
+        ${divRow()}
+        ${row(bold('Net Worth'), bold(fmtCurrency(nw)), colorCls(nw))}
+      `)}
     </div>`;
 }
 
@@ -244,27 +282,21 @@ function renderTransactions() {
   const exp  = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const net  = inc - exp;
   const ym   = currentYM();
-  const isCurrent = txnYear === ym.year && txnMonth === ym.month;
+  const isCurrent  = txnYear === ym.year && txnMonth === ym.month;
   const noAccounts = !data.accounts.length;
 
-  let listHTML = '';
-  if (!txns.length) {
-    listHTML = '<p class="empty-msg">No transactions for this month.</p>';
-  } else {
-    txns.forEach(t => {
-      const typeMap   = { income: 'green', expense: 'red', transfer: 'orange' };
-      const cls       = typeMap[t.type] || '';
-      const catLine   = t.type === 'expense' && t.expenseTypeId
-        ? `<span class="txn-category">${esc(expenseTypeName(t.expenseTypeId))}</span>` : '';
-      const xferLine  = t.type === 'transfer'
-        ? `<span class="txn-category">→ ${esc(accountName(t.toAccountId))}</span>` : '';
-      const noteLine  = t.note ? `<div class="txn-note">${esc(t.note)}</div>` : '';
-      listHTML += `
-        <div class="txn-row">
+  let listHTML = !txns.length
+    ? '<p class="empty-msg">No transactions for this month.</p>'
+    : txns.map(t => {
+        const cls      = { income: 'green', expense: 'red', transfer: 'orange' }[t.type] || '';
+        const catLine  = t.type === 'expense' && t.expenseTypeId
+          ? `<span class="txn-category">${esc(expenseTypeName(t.expenseTypeId))}</span>` : '';
+        const xferLine = t.type === 'transfer'
+          ? `<span class="txn-category">→ ${esc(accountName(t.toAccountId))}</span>` : '';
+        const noteLine = t.note ? `<div class="txn-note">${esc(t.note)}</div>` : '';
+        return `<div class="txn-row">
           <div class="txn-left">
-            <div class="txn-top">
-              <span class="tag tag-${cls}">${t.type}</span>${catLine}${xferLine}
-            </div>
+            <div class="txn-top"><span class="tag tag-${cls}">${t.type}</span>${catLine}${xferLine}</div>
             <div class="txn-account">${esc(accountName(t.accountId))}</div>
             ${noteLine}
           </div>
@@ -274,8 +306,7 @@ function renderTransactions() {
             <button class="delete-btn" data-del-txn="${t.id}">✕</button>
           </div>
         </div>`;
-    });
-  }
+      }).join('');
 
   return `
     <div class="page-header">
@@ -298,12 +329,9 @@ function renderTransactions() {
 function shiftMonth(delta) {
   const d = new Date(txnYear, txnMonth - 1, 1);
   d.setMonth(d.getMonth() + delta);
-  txnYear  = d.getFullYear();
-  txnMonth = d.getMonth() + 1;
+  txnYear = d.getFullYear(); txnMonth = d.getMonth() + 1;
   render();
 }
-
-// ── Add Transaction Modal ─────────────────────────────────────
 
 function openAddTxn() {
   const accOpts = data.accounts.map(a =>
@@ -329,7 +357,7 @@ function openAddTxn() {
       <input id="f-date" type="date" value="${todayISO()}">
     </div>
     <div class="form-group">
-      <label id="f-acc-label">Account</label>
+      <label>Account</label>
       <select id="f-acc"><option value="">— Select —</option>${accOpts}</select>
     </div>
     <div class="form-group" id="f-to-grp" style="display:none">
@@ -363,15 +391,14 @@ function saveTxn() {
   const note      = document.getElementById('f-note').value.trim();
 
   if (!amount || amount <= 0) { alert('Enter a valid amount.'); return false; }
-  if (!date)                  { alert('Select a date.');        return false; }
-  if (!accountId)             { alert('Select an account.');    return false; }
-  if (type === 'transfer' && !toAccId) { alert('Select a destination account.'); return false; }
+  if (!date)      { alert('Select a date.');     return false; }
+  if (!accountId) { alert('Select an account.'); return false; }
+  if (type === 'transfer' && !toAccId)            { alert('Select a destination account.'); return false; }
   if (type === 'transfer' && toAccId === accountId) { alert('From and To accounts must differ.'); return false; }
 
   data.transactions.push({
-    id: uuid(), date, amount, type,
-    accountId,
-    toAccountId:   type === 'transfer' ? toAccId : null,
+    id: uuid(), date, amount, type, accountId,
+    toAccountId:   type === 'transfer' ? toAccId  : null,
     expenseTypeId: type === 'expense'  ? (catId || null) : null,
     note
   });
@@ -391,7 +418,7 @@ function renderAssets() {
     ASSET_CATEGORIES.forEach(cat => {
       const items = data.assets.filter(a => a.category === cat);
       if (!items.length) return;
-      let rows = items.map(a => `
+      contentHTML += section(cat, items.map(a => `
         <div class="row account-row">
           <div>
             <div class="row-label">${esc(a.name)}</div>
@@ -402,26 +429,23 @@ function renderAssets() {
             <button class="edit-btn"   data-edit-asset="${a.id}">✎</button>
             <button class="delete-btn" data-del-asset="${a.id}">✕</button>
           </div>
-        </div>`).join('');
-      contentHTML += section(cat, rows);
+        </div>`).join(''));
     });
-    contentHTML += section('Summary', row(bold('Total Assets'), bold(fmtCurrency(totalAssets())), 'blue'));
+    contentHTML += section('Summary',
+      row(bold('Total Assets'), bold(fmtCurrency(totalAssets())), 'blue'));
     contentHTML = `<div class="page-content">${contentHTML}</div>`;
   }
-
   return `
     <div class="page-header">
       <h1>Assets</h1>
       <button class="header-btn" onclick="openAddAsset(null)">+ Add</button>
-    </div>
-    ${contentHTML}`;
+    </div>${contentHTML}`;
 }
 
 function openAddAsset(id) {
   const asset   = id ? data.assets.find(a => a.id === id) : null;
   const catOpts = ASSET_CATEGORIES.map(c =>
     `<option value="${c}" ${asset?.category === c ? 'selected':''}>${c}</option>`).join('');
-
   showModal(asset ? 'Edit Asset' : 'Add Asset', `
     <div class="form-group">
       <label>Name</label>
@@ -447,11 +471,9 @@ function saveAsset(existingId) {
   const cat     = document.getElementById('a-cat').value;
   const value   = parseFloat(document.getElementById('a-val').value);
   const asOfDate = document.getElementById('a-date').value;
-
-  if (!name)               { alert('Enter a name.');          return false; }
-  if (isNaN(value)||value<0) { alert('Enter a valid value.');   return false; }
-  if (!asOfDate)           { alert('Select a date.');         return false; }
-
+  if (!name)               { alert('Enter a name.');        return false; }
+  if (isNaN(value)||value<0) { alert('Enter a valid value.'); return false; }
+  if (!asOfDate)           { alert('Select a date.');       return false; }
   if (existingId) {
     const i = data.assets.findIndex(a => a.id === existingId);
     if (i >= 0) data.assets[i] = { ...data.assets[i], name, category: cat, value, asOfDate };
@@ -467,9 +489,8 @@ function saveAsset(existingId) {
 // ═══════════════════════════════════════════════════════════════
 
 function renderNetWorth() {
-  const liq  = totalLiquid(), liab = totalLiabilities(), ass = totalAssets(), nw = netWorth();
+  const liq = totalLiquid(), liab = totalLiabilities(), ass = totalAssets(), nw = netWorth();
 
-  // Current breakdown
   let brkHTML = '';
   if (!data.accounts.length && !data.assets.length) {
     brkHTML = '<p class="empty-msg">Add accounts and assets to see your net worth.</p>';
@@ -485,9 +506,7 @@ function renderNetWorth() {
       const tot = data.assets.filter(a => a.category === cat).reduce((s, a) => s + a.value, 0);
       if (tot > 0) brkHTML += row(cat, fmtCurrency(tot));
     });
-    if (data.assets.length) {
-      brkHTML += row(bold('Total Assets'), bold(fmtCurrency(ass)), 'blue');
-    }
+    if (data.assets.length) brkHTML += row(bold('Total Assets'), bold(fmtCurrency(ass)), 'blue');
     if (liab !== 0) {
       brkHTML += divRow();
       data.accounts.filter(a => isLiability(a)).forEach(a => {
@@ -502,15 +521,13 @@ function renderNetWorth() {
     </div>`;
   }
 
-  // Monthly P&L
   const months = lastNMonths(12);
   let plHTML = `<div class="pl-header">
     <span>Month</span><span class="green">Income</span><span class="red">Expense</span><span>Net</span>
   </div>`;
   let hasRows = false;
   months.forEach(ym => {
-    const inc = monthlyIncome(ym.year, ym.month);
-    const exp = monthlyExpenses(ym.year, ym.month);
+    const inc = monthlyIncome(ym.year, ym.month), exp = monthlyExpenses(ym.year, ym.month);
     if (!inc && !exp) return;
     hasRows = true;
     const net = inc - exp;
@@ -536,28 +553,30 @@ function renderNetWorth() {
 // ═══════════════════════════════════════════════════════════════
 
 function renderSettings() {
-  // Accounts
-  let accHTML = data.accounts.length ? data.accounts.map(acc => `
-    <div class="row account-row">
-      <div>
-        <div class="row-label">${esc(acc.name)}</div>
-        <div style="display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap">
-          <span class="tag ${isLiability(acc)?'tag-red':'tag-blue'}">${acc.type}</span>
-          <span class="txn-date">Opening: ${fmtCurrency(acc.openingBalance)}</span>
+  const user = auth.currentUser;
+
+  let accHTML = data.accounts.length
+    ? data.accounts.map(acc => `
+      <div class="row account-row">
+        <div>
+          <div class="row-label">${esc(acc.name)}</div>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap">
+            <span class="tag ${isLiability(acc)?'tag-red':'tag-blue'}">${acc.type}</span>
+            <span class="txn-date">Opening: ${fmtCurrency(acc.openingBalance)}</span>
+          </div>
+          <div class="txn-date">Current: ${fmtCurrency(balance(acc.id))}</div>
         </div>
-        <div class="txn-date">Current balance: ${fmtCurrency(balance(acc.id))}</div>
-      </div>
-      <button class="delete-btn" data-del-acc="${acc.id}">✕</button>
-    </div>`).join('')
+        <button class="delete-btn" data-del-acc="${acc.id}">✕</button>
+      </div>`).join('')
     : '<p class="empty-msg">No accounts yet.</p>';
   accHTML += `<button class="add-row-btn" onclick="openAddAccount()">+ Add Account</button>`;
 
-  // Expense types
-  let etHTML = data.expenseTypes.length ? data.expenseTypes.map(e => `
-    <div class="row">
-      <span>${esc(e.emoji)} ${esc(e.name)}</span>
-      <button class="delete-btn" data-del-et="${e.id}">✕</button>
-    </div>`).join('')
+  let etHTML = data.expenseTypes.length
+    ? data.expenseTypes.map(e => `
+      <div class="row">
+        <span>${esc(e.emoji)} ${esc(e.name)}</span>
+        <button class="delete-btn" data-del-et="${e.id}">✕</button>
+      </div>`).join('')
     : '<p class="empty-msg">No categories.</p>';
   etHTML += `<button class="add-row-btn" onclick="openAddExpenseType()">+ Add Category</button>`;
 
@@ -566,15 +585,13 @@ function renderSettings() {
     <div class="page-content">
       ${section('Accounts & Payment Methods', accHTML)}
       ${section('Expense Categories', etHTML)}
-      ${section('About', `
-        ${row('App', 'Expense Manager v1.0')}
-        ${row('Storage', 'Local (device only)')}
-        ${row('Currency', 'Indian Rupee ₹')}
+      ${section('My Account', `
+        ${row('Signed in as', esc(user?.email || ''))}
+        ${row('Sync', '<span class="green">● Live</span>')}
+        <button class="add-row-btn" style="color:var(--red)" onclick="confirmSignOut()">Sign Out</button>
       `)}
     </div>`;
 }
-
-// ── Add Account ───────────────────────────────────────────────
 
 function openAddAccount() {
   const typeOpts = ACCOUNT_TYPES.map(t => `<option value="${t}">${t}</option>`).join('');
@@ -599,20 +616,16 @@ function openAddAccount() {
 }
 
 function saveAccount() {
-  const name    = document.getElementById('ac-name').value.trim();
-  const type    = document.getElementById('ac-type').value;
-  const bal     = parseFloat(document.getElementById('ac-bal').value) || 0;
-  const date    = document.getElementById('ac-date').value;
-
+  const name = document.getElementById('ac-name').value.trim();
+  const type = document.getElementById('ac-type').value;
+  const bal  = parseFloat(document.getElementById('ac-bal').value) || 0;
+  const date = document.getElementById('ac-date').value;
   if (!name) { alert('Enter an account name.'); return false; }
   if (!date) { alert('Select a date.');         return false; }
-
   data.accounts.push({ id: uuid(), name, type, openingBalance: bal, openingDate: date });
   saveData();
   return true;
 }
-
-// ── Add Expense Type ──────────────────────────────────────────
 
 const EMOJI_PALETTE = ['🍽️','🚗','💡','🛍️','💊','🎬','🏠','💼','✈️','📚','🎓','🏋️','👗','💇','🖥️','🏏','🐾','🎵','🎮','🏥','⛽','🔧','🌐','📌'];
 
@@ -635,13 +648,11 @@ function openAddExpenseType() {
     </div>
   `, saveExpenseType);
 }
-
 function pickEmoji(e, btn) {
   document.getElementById('et-emoji').value = e;
   document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 }
-
 function saveExpenseType() {
   const name  = document.getElementById('et-name').value.trim();
   const emoji = document.getElementById('et-emoji').value.trim();
@@ -660,7 +671,6 @@ function setSeg(btn, groupId) {
   document.querySelectorAll(`#${groupId} .seg-btn`).forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 }
-
 function getActiveSeg(groupId) {
   return document.querySelector(`#${groupId} .seg-btn.active`)?.dataset.val || '';
 }
@@ -671,6 +681,7 @@ function getActiveSeg(groupId) {
 
 function render() {
   const el = document.getElementById('content');
+  if (!el) return;
   const renderers = {
     dashboard: renderDashboard, transactions: renderTransactions,
     assets: renderAssets, networth: renderNetWorth, settings: renderSettings
@@ -687,31 +698,25 @@ function switchTab(tab) {
   render();
 }
 
-// ── Event delegation ──────────────────────────────────────────
-
 function attachListeners() {
   document.querySelectorAll('[data-del-txn]').forEach(btn => btn.addEventListener('click', () => {
     if (!confirm('Delete this transaction?')) return;
     data.transactions = data.transactions.filter(t => t.id !== btn.dataset.delTxn);
     saveData(); render();
   }));
-
   document.querySelectorAll('[data-del-acc]').forEach(btn => btn.addEventListener('click', () => {
     if (!confirm('Delete account and all its transactions?')) return;
     data.accounts     = data.accounts.filter(a => a.id !== btn.dataset.delAcc);
     data.transactions = data.transactions.filter(t => t.accountId !== btn.dataset.delAcc);
     saveData(); render();
   }));
-
   document.querySelectorAll('[data-del-asset]').forEach(btn => btn.addEventListener('click', () => {
     if (!confirm('Delete this asset?')) return;
     data.assets = data.assets.filter(a => a.id !== btn.dataset.delAsset);
     saveData(); render();
   }));
-
   document.querySelectorAll('[data-edit-asset]').forEach(btn =>
     btn.addEventListener('click', () => openAddAsset(btn.dataset.editAsset)));
-
   document.querySelectorAll('[data-del-et]').forEach(btn => btn.addEventListener('click', () => {
     if (!confirm('Delete this category?')) return;
     data.expenseTypes = data.expenseTypes.filter(e => e.id !== btn.dataset.delEt);
@@ -724,26 +729,39 @@ function attachListeners() {
 // ═══════════════════════════════════════════════════════════════
 
 function init() {
-  loadData();
-
+  // Tab navigation
   document.querySelectorAll('.tab-btn').forEach(btn =>
     btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
 
+  // Modal buttons
   document.getElementById('modal-cancel').addEventListener('click', closeModal);
-
   document.getElementById('modal-save').addEventListener('click', () => {
     if (modalSaveFn && modalSaveFn() !== false) { closeModal(); render(); }
   });
-
   document.getElementById('modal-overlay').addEventListener('click', e => {
     if (e.target.id === 'modal-overlay') closeModal();
   });
 
+  // Handle redirect sign-in result (mobile)
+  auth.getRedirectResult().catch(() => {});
+
+  // Auth state drives everything
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      document.getElementById('login-screen').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      setupSync(user.uid);
+    } else {
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('app').classList.add('hidden');
+      if (firestoreUnsub) { firestoreUnsub(); firestoreUnsub = null; }
+    }
+  });
+
+  // Service worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
-
-  render();
 }
 
 document.addEventListener('DOMContentLoaded', init);
