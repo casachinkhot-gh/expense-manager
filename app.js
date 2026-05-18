@@ -85,7 +85,7 @@ const SEED_EXPENSE_TYPES = [
   { name: 'Other',          emoji: '📌' },
 ].map(e => ({ ...e, id: uuid() }));
 
-let data = { expenseTypes: [], accounts: [], transactions: [], assets: [] };
+let data = { expenseTypes: [], accounts: [], transactions: [], assets: [], trips: [] };
 let firestoreUnsub = null;
 
 function userDocRef(uid) {
@@ -101,11 +101,12 @@ function setupSync(uid) {
       data.accounts      = d.accounts      || [];
       data.transactions  = d.transactions  || [];
       data.assets        = d.assets        || [];
+      data.trips         = d.trips         || [];
     } else {
       // First sign-in — seed defaults
       data = {
         expenseTypes: SEED_EXPENSE_TYPES,
-        accounts: [], transactions: [], assets: []
+        accounts: [], transactions: [], assets: [], trips: []
       };
       saveData();
     }
@@ -198,16 +199,18 @@ const monthlyIncome   = (y, m) => monthlyTxns(y, m).filter(t => t.type === 'inco
 const monthlyExpenses = (y, m) => monthlyTxns(y, m).filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
 const accountName     = id => (data.accounts.find(a => a.id === id) || {}).name || '—';
 const expenseTypeName = id => { const e = data.expenseTypes.find(e => e.id === id); return e ? `${e.emoji} ${e.name}` : ''; };
+const tripName        = id => { const t = (data.trips||[]).find(t => t.id === id); return t ? `${t.emoji||'🧳'} ${t.name}` : ''; };
 
 // ═══════════════════════════════════════════════════════════════
 // APP STATE
 // ═══════════════════════════════════════════════════════════════
 
-let currentTab  = 'dashboard';
-let txnYear     = new Date().getFullYear();
-let txnMonth    = new Date().getMonth() + 1;
-let txnView     = 'list';   // 'list' | 'category' | 'account'
-let modalSaveFn = null;
+let currentTab    = 'dashboard';
+let txnYear       = new Date().getFullYear();
+let txnMonth      = new Date().getMonth() + 1;
+let txnView       = 'list';   // 'list' | 'category' | 'account'
+let currentTripId = null;     // null = trip list, id = trip detail
+let modalSaveFn   = null;
 
 // ═══════════════════════════════════════════════════════════════
 // HTML HELPERS
@@ -493,10 +496,18 @@ function exportMonthExcel() {
 }
 
 function openAddTxn() {
-  const accOpts = data.accounts.map(a =>
+  const accOpts  = data.accounts.map(a =>
     `<option value="${a.id}">${esc(a.name)} (${a.type})</option>`).join('');
-  const catOpts = data.expenseTypes.map(e =>
+  const catOpts  = data.expenseTypes.map(e =>
     `<option value="${e.id}">${esc(e.emoji + ' ' + e.name)}</option>`).join('');
+  const trips    = data.trips || [];
+  const tripOpts = trips.map(t =>
+    `<option value="${t.id}">${esc((t.emoji||'🧳') + ' ' + t.name)}</option>`).join('');
+  const tripSel  = trips.length ? `
+    <div class="form-group">
+      <label>Trip (optional)</label>
+      <select id="f-trip"><option value="">— None —</option>${tripOpts}</select>
+    </div>` : '';
 
   showModal('Add Transaction', `
     <div class="form-group">
@@ -527,6 +538,7 @@ function openAddTxn() {
       <label>Category</label>
       <select id="f-cat"><option value="">— None —</option>${catOpts}</select>
     </div>
+    ${tripSel}
     <div class="form-group">
       <label>Note (optional)</label>
       <input id="f-note" type="text" placeholder="Description">
@@ -547,6 +559,7 @@ function saveTxn() {
   const accountId = document.getElementById('f-acc').value;
   const toAccId   = document.getElementById('f-to-acc')?.value || '';
   const catId     = document.getElementById('f-cat')?.value   || '';
+  const tripId    = document.getElementById('f-trip')?.value  || '';
   const note      = document.getElementById('f-note').value.trim();
 
   if (!amount || amount <= 0) { alert('Enter a valid amount.'); return false; }
@@ -559,6 +572,7 @@ function saveTxn() {
     id: uuid(), date, amount, type, accountId,
     toAccountId:   type === 'transfer' ? toAccId  : null,
     expenseTypeId: type === 'expense'  ? (catId || null) : null,
+    tripId:        tripId || null,
     note
   };
   data.transactions.push(txn);
@@ -570,12 +584,20 @@ function saveTxn() {
 function openEditTxn(id) {
   const txn = data.transactions.find(t => t.id === id);
   if (!txn) return;
-  const accOpts = data.accounts.map(a =>
+  const accOpts   = data.accounts.map(a =>
     `<option value="${a.id}" ${a.id === txn.accountId ? 'selected':''}>${esc(a.name)} (${a.type})</option>`).join('');
   const toAccOpts = data.accounts.map(a =>
     `<option value="${a.id}" ${a.id === txn.toAccountId ? 'selected':''}>${esc(a.name)} (${a.type})</option>`).join('');
-  const catOpts = data.expenseTypes.map(e =>
+  const catOpts   = data.expenseTypes.map(e =>
     `<option value="${e.id}" ${e.id === txn.expenseTypeId ? 'selected':''}>${esc(e.emoji+' '+e.name)}</option>`).join('');
+  const trips     = data.trips || [];
+  const tripOpts  = trips.map(tr =>
+    `<option value="${tr.id}" ${tr.id === txn.tripId ? 'selected':''}>${esc((tr.emoji||'🧳')+' '+tr.name)}</option>`).join('');
+  const tripSel   = trips.length ? `
+    <div class="form-group">
+      <label>Trip (optional)</label>
+      <select id="f-trip"><option value="">— None —</option>${tripOpts}</select>
+    </div>` : '';
   const t = txn.type;
   showModal('Edit Transaction', `
     <div class="form-group">
@@ -606,6 +628,7 @@ function openEditTxn(id) {
       <label>Category</label>
       <select id="f-cat"><option value="">— None —</option>${catOpts}</select>
     </div>
+    ${tripSel}
     <div class="form-group">
       <label>Note (optional)</label>
       <input id="f-note" type="text" value="${esc(txn.note||'')}">
@@ -620,6 +643,7 @@ function saveEditTxn(id) {
   const accountId = document.getElementById('f-acc').value;
   const toAccId   = document.getElementById('f-to-acc')?.value || '';
   const catId     = document.getElementById('f-cat')?.value   || '';
+  const tripId    = document.getElementById('f-trip')?.value  || '';
   const note      = document.getElementById('f-note').value.trim();
   if (!amount || amount <= 0) { alert('Enter a valid amount.'); return false; }
   if (!date)      { alert('Select a date.');     return false; }
@@ -631,6 +655,7 @@ function saveEditTxn(id) {
     ...data.transactions[i], date, amount, type, accountId,
     toAccountId:   type === 'transfer' ? toAccId : null,
     expenseTypeId: type === 'expense'  ? (catId || null) : null,
+    tripId:        tripId || null,
     note
   };
   saveData();
@@ -952,6 +977,247 @@ function saveExpenseType() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TRIPS
+// ═══════════════════════════════════════════════════════════════
+
+const TRIP_EMOJIS = ['🧳','✈️','🏖️','⛰️','🚂','🚢','🏕️','🌍','🎡','🏨','🚗','🎒','🎯','🏔️','🛳️'];
+
+function renderTrips() {
+  if (currentTripId) return renderTripDetail(currentTripId);
+
+  const trips = data.trips || [];
+  let listHTML = '';
+  if (!trips.length) {
+    listHTML = card('<p class="empty-msg">No trips yet. Tap + Add to create one.</p>');
+  } else {
+    const sorted = [...trips].sort((a, b) => b.startDate.localeCompare(a.startDate));
+    listHTML = card(sorted.map(trip => {
+      const txns   = (data.transactions || []).filter(t => t.tripId === trip.id);
+      const spent  = txns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+      const over   = trip.budget && spent > trip.budget;
+      const dateRange = trip.endDate && trip.endDate !== trip.startDate
+        ? `${fmtDate(trip.startDate)} – ${fmtDate(trip.endDate)}` : fmtDate(trip.startDate);
+      const budgetLine = trip.budget
+        ? `${fmtCurrency(spent)} of ${fmtCurrency(trip.budget)}${over ? ' <span class="red">OVER</span>' : ''}`
+        : `${fmtCurrency(spent)} spent · ${txns.length} txn${txns.length !== 1 ? 's' : ''}`;
+      return `<div class="row account-row" style="cursor:pointer" onclick="openTripDetail('${trip.id}')">
+        <div style="flex:1;min-width:0">
+          <div class="row-label">${esc(trip.emoji||'🧳')} ${esc(trip.name)}</div>
+          <div class="txn-date" style="margin-top:2px">${dateRange}</div>
+          <div class="txn-date" style="margin-top:1px">${budgetLine}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <span class="row-value ${over?'red':''}">${fmtCurrency(spent)}</span>
+          <button class="edit-btn"   data-edit-trip="${trip.id}" onclick="event.stopPropagation()">✎</button>
+          <button class="delete-btn" data-del-trip="${trip.id}"  onclick="event.stopPropagation()">✕</button>
+        </div>
+      </div>`;
+    }).join(''));
+  }
+
+  return `
+    <div class="page-header">
+      <h1>Trips</h1>
+      <button class="header-btn" onclick="openAddTrip()">+ Add</button>
+    </div>
+    <div class="page-content">${listHTML}</div>`;
+}
+
+function openTripDetail(id) { currentTripId = id; render(); }
+
+function renderTripDetail(id) {
+  const trip = (data.trips || []).find(t => t.id === id);
+  if (!trip) { currentTripId = null; return renderTrips(); }
+
+  const txns   = (data.transactions || []).filter(t => t.tripId === id).sort((a, b) => b.date.localeCompare(a.date));
+  const expenses = txns.filter(t => t.type === 'expense');
+  const income   = txns.filter(t => t.type === 'income');
+  const totalExp = expenses.reduce((s, t) => s + t.amount, 0);
+  const totalInc = income.reduce((s, t)   => s + t.amount, 0);
+
+  // Budget bar
+  let budgetHTML = '';
+  if (trip.budget) {
+    const pct  = Math.min(Math.round(totalExp / trip.budget * 100), 100);
+    const over = totalExp > trip.budget;
+    const remaining = trip.budget - totalExp;
+    budgetHTML = section('Budget', `
+      <div class="row">
+        <span class="row-label">Total Budget</span>
+        <span class="row-value">${fmtCurrency(trip.budget)}</span>
+      </div>
+      <div class="row">
+        <span class="row-label">Spent</span>
+        <span class="row-value red">${fmtCurrency(totalExp)}</span>
+      </div>
+      <div class="row">
+        <span class="row-label">${over ? 'Over Budget' : 'Remaining'}</span>
+        <span class="row-value ${over?'red':'green'}">${fmtCurrency(Math.abs(remaining))}</span>
+      </div>
+      <div style="padding:4px 15px 12px">
+        <div style="background:var(--border);border-radius:6px;height:10px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${over?'var(--red)':'var(--green)'};border-radius:6px;transition:width 0.4s"></div>
+        </div>
+        <div class="txn-date" style="text-align:right;margin-top:4px">${pct}% used${over?' — OVER BUDGET':''}</div>
+      </div>
+    `);
+  }
+
+  // Category breakdown
+  let catHTML = '';
+  if (expenses.length) {
+    const byCategory = {};
+    expenses.forEach(t => {
+      const key = t.expenseTypeId || '__none__';
+      byCategory[key] = (byCategory[key] || 0) + t.amount;
+    });
+    const sorted = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    const rows = sorted.map(([cid, total]) => {
+      const label = cid === '__none__' ? '📌 Uncategorized' : expenseTypeName(cid);
+      const pct   = totalExp > 0 ? Math.round(total / totalExp * 100) : 0;
+      return `<div class="row">
+        <span class="row-label">${esc(label)} <span class="txn-date">(${pct}%)</span></span>
+        <span class="row-value red">${fmtCurrency(total)}</span>
+      </div>`;
+    }).join('') + divRow() + row(bold('Total Expenses'), bold(fmtCurrency(totalExp)), 'red');
+    catHTML = section('Expenses by Category', rows);
+  }
+
+  // Transaction list
+  const txnListHTML = !txns.length
+    ? '<p class="empty-msg">No transactions tagged to this trip yet.</p>'
+    : txns.map(t => {
+        const cls     = { income: 'green', expense: 'red', transfer: 'orange' }[t.type] || '';
+        const catLine = t.type === 'expense' && t.expenseTypeId
+          ? `<span class="txn-category">${esc(expenseTypeName(t.expenseTypeId))}</span>` : '';
+        const noteLine = t.note ? `<div class="txn-note">${esc(t.note)}</div>` : '';
+        return `<div class="txn-row">
+          <div class="txn-left">
+            <div class="txn-top"><span class="tag tag-${cls}">${t.type}</span>${catLine}</div>
+            <div class="txn-account">${esc(accountName(t.accountId))}</div>
+            ${noteLine}
+          </div>
+          <div class="txn-right">
+            <span class="txn-amount ${cls}">${fmtCurrency(t.amount)}</span>
+            <span class="txn-date">${fmtDate(t.date)}</span>
+          </div>
+        </div>`;
+      }).join('');
+
+  const dateRange = trip.endDate && trip.endDate !== trip.startDate
+    ? `${fmtDate(trip.startDate)} – ${fmtDate(trip.endDate)}` : fmtDate(trip.startDate);
+
+  return `
+    <div class="page-header" style="flex-direction:column;align-items:flex-start;gap:2px">
+      <button onclick="currentTripId=null;render()"
+        style="background:none;border:none;color:var(--primary);font-size:15px;cursor:pointer;padding:0 0 2px 0">
+        ‹ All Trips
+      </button>
+      <h1>${esc(trip.emoji||'🧳')} ${esc(trip.name)}</h1>
+      <div class="txn-date" style="font-size:13px">${dateRange}</div>
+    </div>
+    <div class="page-content">
+      ${budgetHTML}
+      ${section('Summary', `
+        ${row('Total Spent',   fmtCurrency(totalExp), 'red')}
+        ${totalInc ? row('Income', fmtCurrency(totalInc), 'green') : ''}
+        ${row('Net',           fmtCurrency(totalInc - totalExp), colorCls(totalInc - totalExp))}
+        ${row('Transactions',  txns.length)}
+      `)}
+      ${catHTML}
+      ${section('Transactions', txnListHTML)}
+    </div>`;
+}
+
+function openAddTrip() {
+  const picker = TRIP_EMOJIS.map(e =>
+    `<button class="emoji-btn" onclick="pickEmoji('${e}',this)">${e}</button>`).join('');
+  showModal('New Trip / Project', `
+    <div class="form-group">
+      <label>Name</label>
+      <input id="tr-name" type="text" placeholder="e.g. Goa Vacation, Mumbai Conference">
+    </div>
+    <div class="form-group">
+      <label>Emoji</label>
+      <input id="et-emoji" type="text" maxlength="2" value="🧳"
+        style="width:56px;text-align:center;font-size:1.5em;padding:6px">
+      <div class="emoji-grid" style="margin-top:8px">${picker}</div>
+    </div>
+    <div class="form-group">
+      <label>Start Date</label>
+      <input id="tr-start" type="date" value="${todayISO()}">
+    </div>
+    <div class="form-group">
+      <label>End Date (optional)</label>
+      <input id="tr-end" type="date">
+    </div>
+    <div class="form-group">
+      <label>Budget ₹ (optional)</label>
+      <input id="tr-budget" type="number" min="0" step="1" placeholder="Leave blank for no budget" inputmode="decimal">
+    </div>
+  `, saveTrip);
+}
+
+function saveTrip() {
+  const name   = document.getElementById('tr-name').value.trim();
+  const emoji  = document.getElementById('et-emoji').value.trim() || '🧳';
+  const start  = document.getElementById('tr-start').value;
+  const end    = document.getElementById('tr-end').value;
+  const budget = parseFloat(document.getElementById('tr-budget').value) || null;
+  if (!name)  { alert('Enter a name for this trip.'); return false; }
+  if (!start) { alert('Select a start date.');         return false; }
+  if (!data.trips) data.trips = [];
+  data.trips.push({ id: uuid(), name, emoji, startDate: start, endDate: end || start, budget });
+  saveData();
+  return true;
+}
+
+function openEditTrip(id) {
+  const trip = (data.trips || []).find(t => t.id === id);
+  if (!trip) return;
+  const picker = TRIP_EMOJIS.map(e =>
+    `<button class="emoji-btn ${e === trip.emoji ? 'active' : ''}" onclick="pickEmoji('${e}',this)">${e}</button>`).join('');
+  showModal('Edit Trip / Project', `
+    <div class="form-group">
+      <label>Name</label>
+      <input id="tr-name" type="text" value="${esc(trip.name)}">
+    </div>
+    <div class="form-group">
+      <label>Emoji</label>
+      <input id="et-emoji" type="text" maxlength="2" value="${trip.emoji||'🧳'}"
+        style="width:56px;text-align:center;font-size:1.5em;padding:6px">
+      <div class="emoji-grid" style="margin-top:8px">${picker}</div>
+    </div>
+    <div class="form-group">
+      <label>Start Date</label>
+      <input id="tr-start" type="date" value="${trip.startDate}">
+    </div>
+    <div class="form-group">
+      <label>End Date</label>
+      <input id="tr-end" type="date" value="${trip.endDate||''}">
+    </div>
+    <div class="form-group">
+      <label>Budget ₹ (optional)</label>
+      <input id="tr-budget" type="number" min="0" step="1" inputmode="decimal" value="${trip.budget||''}">
+    </div>
+  `, () => saveEditTrip(id));
+}
+
+function saveEditTrip(id) {
+  const name   = document.getElementById('tr-name').value.trim();
+  const emoji  = document.getElementById('et-emoji').value.trim() || '🧳';
+  const start  = document.getElementById('tr-start').value;
+  const end    = document.getElementById('tr-end').value;
+  const budget = parseFloat(document.getElementById('tr-budget').value) || null;
+  if (!name)  { alert('Enter a name for this trip.'); return false; }
+  if (!start) { alert('Select a start date.');         return false; }
+  const i = (data.trips || []).findIndex(t => t.id === id);
+  if (i >= 0) data.trips[i] = { ...data.trips[i], name, emoji, startDate: start, endDate: end || start, budget };
+  saveData();
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // NOTIFICATIONS
 // ═══════════════════════════════════════════════════════════════
 
@@ -1065,7 +1331,8 @@ function render() {
   if (!el) return;
   const renderers = {
     dashboard: renderDashboard, transactions: renderTransactions,
-    assets: renderAssets, networth: renderNetWorth, settings: renderSettings
+    assets: renderAssets, networth: renderNetWorth, settings: renderSettings,
+    trips: renderTrips
   };
   el.innerHTML = renderers[currentTab]();
   el.scrollTop = 0;
@@ -1074,6 +1341,7 @@ function render() {
 
 function switchTab(tab) {
   currentTab = tab;
+  currentTripId = null;   // reset trip detail view when switching tabs
   document.querySelectorAll('.tab-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.tab === tab));
   render();
@@ -1107,6 +1375,16 @@ function attachListeners() {
     data.expenseTypes = data.expenseTypes.filter(e => e.id !== btn.dataset.delEt);
     saveData(); render();
   }));
+  document.querySelectorAll('[data-del-trip]').forEach(btn => btn.addEventListener('click', () => {
+    if (!confirm('Delete this trip? Transactions will not be deleted, just unlinked.')) return;
+    const tid = btn.dataset.delTrip;
+    data.trips = (data.trips || []).filter(t => t.id !== tid);
+    data.transactions.forEach(t => { if (t.tripId === tid) t.tripId = null; });
+    if (currentTripId === tid) currentTripId = null;
+    saveData(); render();
+  }));
+  document.querySelectorAll('[data-edit-trip]').forEach(btn =>
+    btn.addEventListener('click', () => openEditTrip(btn.dataset.editTrip)));
 }
 
 // ═══════════════════════════════════════════════════════════════
